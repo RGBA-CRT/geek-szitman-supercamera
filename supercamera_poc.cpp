@@ -66,7 +66,7 @@ class UsbSupercamera {
         ret = libusb_bulk_transfer(handle, LIBUSB_ENDPOINT_IN | endpoint,
                                    buf.data(), buf.size(), &transferred, USB_TIMEOUT);
         if (ret != 0) {
-            std::cerr << KRED "USB READ ERROR ("<< ret << ") " << libusb_strerror(ret) << KRST << std::endl;
+            std::cerr << KRED "USB READ ERROR ("<< libusb_strerror(ret) << ") " << libusb_strerror(ret) << KRST << std::endl;
             buf.resize(0);
             return ret;
         }
@@ -100,7 +100,7 @@ class UsbSupercamera {
         ret = libusb_bulk_transfer(handle, LIBUSB_ENDPOINT_OUT | endpoint,
                                    buf.data(), buf.size(), &transferred, USB_TIMEOUT);
         if (ret != 0) {
-            std::cerr << KRED "USB WRITE ERROR ("<< ret << ") " << libusb_strerror(ret) << KRST << std::endl;
+            std::cerr << KRED "USB WRITE ERROR ("<< libusb_strerror(ret) << ") " << libusb_strerror(ret) << KRST << std::endl;
             return -1;
         }
         if (debug > 0) {
@@ -120,7 +120,7 @@ class UsbSupercamera {
 
         ret = libusb_init(&ctx);
         if (ret < 0) {
-            std::cerr << "fatal: libusb_init fail (" << ret << ")" << std::endl;
+            std::cerr << "fatal: libusb_init fail (" << libusb_strerror(ret) << ")" << std::endl;
             return 1;
         }
 
@@ -132,25 +132,37 @@ class UsbSupercamera {
 
         ret = libusb_reset_device(handle);
         if (ret < 0) {
-            std::cerr << "fatal: libusb_reset_device error (" << ret << ")" << std::endl;
+            std::cerr << "fatal: libusb_reset_device error (" << libusb_strerror(ret) << ")" << std::endl;
             return 1;
         }
 
         ret = libusb_claim_interface(handle, INTERFACE_A_NUMBER);
         if (ret < 0) {
-            std::cerr << "fatal: usb_claim_interface A error (" << ret << ")" << std::endl;
+            std::cerr << "fatal: usb_claim_interface A error (" << libusb_strerror(ret) << ")" << std::endl;
             return 1;
         }
 
         ret = libusb_claim_interface(handle, INTERFACE_B_NUMBER);
         if (ret < 0) {
-            std::cerr << "fatal: usb_claim_interface B error (" << ret << ")" << std::endl;
+            std::cerr << "fatal: usb_claim_interface B error (" << libusb_strerror(ret) << ")" << std::endl;
             return 1;
         }
 
         ret = libusb_set_interface_alt_setting(handle, INTERFACE_B_NUMBER, INTERFACE_B_ALTERNATE_SETTING);
         if (ret < 0) {
-            std::cerr << "fatal: libusb_set_interface_alt_setting B error (" << ret << ")" << std::endl;
+            std::cerr << "fatal: libusb_set_interface_alt_setting B error (" << libusb_strerror(ret) << ")" << std::endl;
+            return 1;
+        }
+
+        ret = libusb_clear_halt(handle, ENDPOINT_1);
+        if (ret < 0) {
+            std::cerr << "fatal: libusb_clear_halt ENDPOINT_1 error (" << libusb_strerror(ret) << ")" << std::endl;
+            return 1;
+        }
+
+        ret = libusb_clear_halt(handle, ENDPOINT_2);
+        if (ret < 0) {
+            std::cerr << "fatal: libusb_clear_halt ENDPOINT_2 error (" << libusb_strerror(ret) << ")" << std::endl;
             return 1;
         }
 
