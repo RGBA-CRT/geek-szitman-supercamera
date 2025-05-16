@@ -16,6 +16,7 @@ if(WIN32)
 	# mingw64
 	# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++ -static-libgcc")
 	# set(OTHER_LDFLAGS "${OTHER_LDFLAGS};-static-libstdc++;-static-libgcc;-static-pie")
+	# set(OTHER_LDFLAGS "${OTHER_LDFLAGS};-lpthread;-static-libgcc")
 endif()
 
 # Add an executable
