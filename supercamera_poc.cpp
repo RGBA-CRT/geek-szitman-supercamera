@@ -258,20 +258,13 @@ public:
             return;
         }
 
-        // while
-            /* found SOI, memory pos*/
-            /* found EOI, trim, callback */
-            // insert cam_buffer
-
         const upp_cam_frame_t *p_cam_header = (upp_cam_frame_t *) (data.data() + usb_header_len);
         if ((last_frame_id != p_cam_header->fid)){
             printf("WARNING: %d bytes dropped. because frame skip %d %d\n", camera_buffer.size(), last_frame_id, p_cam_header->fid);
-            // pic_callback(camera_buffer);
             camera_buffer.resize(0);
             last_frame_id = p_cam_header->fid;
         }
 
-        bool found_eoi = FALSE;
         auto start_itr = data.begin() + usb_header_len + sizeof(upp_cam_frame_t);
         // printf("packet start %d %d %08x \n", p_cam_header->fid, p_cam_header->cam_num, p_cam_header->g_sensor);
         for(auto p=start_itr, end=data.end(); p!=end; ++p){
@@ -292,41 +285,16 @@ public:
                 last_frame_id = p_cam_header->fid;
 
                 start_itr = next;
-                found_eoi = TRUE;
             }
             // if(++p == data.end()) break;
         }
         // printf(" %d bytes \n", data.size());
 
-        // if(found_eoi){
-            
-        //     camera_buffer.resize(0);
-        // }
         camera_buffer.insert(camera_buffer.end(), start_itr, data.end());        
 
-
-        // if ((camera_buffer.size() > 0) && (cam_header.fid != p_cam_header->fid) && found_eoi) {
-        //     pic_callback(camera_buffer);
-        //     camera_buffer.resize(0);
-        // }
-
-        // if (camera_buffer.size() == 0) {
-        //     cam_header = *p_cam_header;
-        //     assert(cam_header.cam_num < 2);
-        //     assert(cam_header.has_g == 0);
-        //     assert(cam_header.other == 0);
-        // } else {
-        //     assert(cam_header.fid == p_cam_header->fid);
-        //     assert(cam_header.cam_num == p_cam_header->cam_num);
-        //     assert(cam_header.has_g == p_cam_header->has_g);
-        //     assert(cam_header.other == p_cam_header->other);
-        // }
         if (p_cam_header->button_press) {
             btn_callback();
         }
-        // btn_callback();
-        // auto data_start = data.begin() + usb_header_len + cam_header_len;
-        // camera_buffer.insert(camera_buffer.end(), data_start, data.end());        
     }
 };
 
