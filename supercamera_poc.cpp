@@ -31,6 +31,7 @@
 #ifdef __clang__
 #pragma GCC diagnostic ignored "-Wdeprecated-anon-enum-enum-conversion"
 #endif
+#include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #pragma GCC diagnostic pop
 
@@ -311,7 +312,7 @@ public:
             } else {
                 if(dis < 5){
                     printf("WARN: distance %d %x at seq %d, %d bytes\n", dis, *start_itr, p_cam_header->fid, camera_buffer.size());
-                }       
+                }
             }
         }
 
@@ -332,7 +333,7 @@ static void pic_callback(const byteVector &pic)
 {
     static uint32_t i = 0;
 
-    std::cout << KCYN "PIC i:" << i << " size:" << pic.size() << KRST << std::endl;
+    // std::cout << KCYN "PIC i:" << i << " size:" << pic.size() << KRST << std::endl;
 
     if (save_next_frame) {
         save_next_frame = false;
@@ -357,7 +358,7 @@ static void pic_callback(const byteVector &pic)
                  << "." << std::setfill('0') << std::setw(3) << millis << ".jpg";
         std::ofstream output(filename.str(), std::ios::binary);
         output.write(reinterpret_cast<const char *>(pic.data()), pic.size());
-        
+
         printf("saved: %s\n", filename.str().c_str());
     }
 
@@ -379,6 +380,12 @@ static void gui(void) {
     constexpr const char *window_name = "Geek szitman supercamera - PoC";
     uint32_t frame_done = latest_frame_id;
 
+    cv::namedWindow(window_name, cv::WINDOW_NORMAL /*KEEPRATIO | cv::WINDOW_GUI_EXPANDED */);
+    cv::resizeWindow(window_name, 640, 480);
+
+    cv::Mat resized;
+    cv::Rect last_rect;
+    cv::Mat mat;
     while (!exit_program) {
         int key = cv::waitKey(10);
         if (key == 'q' or key == '\e') {
@@ -393,8 +400,33 @@ static void gui(void) {
                 frame_done = latest_frame_id;
             }
             if (img.data != nullptr) {
-                cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
-                cv::imshow(window_name, img);
+                // keep aspect zoom
+                auto rect = cv::getWindowImageRect(window_name);
+
+                if( last_rect.width != rect.width || last_rect.height != rect.height){
+                    float width_ratio = (float)rect.width / (float)img.cols;
+                    float height_ratio = (float)rect.height / (float)img.rows;
+                    if(width_ratio > height_ratio){
+                        width_ratio = height_ratio;
+                    }else{
+                        height_ratio = width_ratio;
+                    }
+                    int letter_box = (rect.width - (width_ratio * img.cols))/2;
+
+                    mat = (cv::Mat_<double>(2,3)<<
+                        width_ratio, 0.0, letter_box,
+                        0.0, height_ratio, 0.0);
+
+                    printf("%d %d %dx%d %dx%d %lf %lf\n", rect.x, rect.y, rect.width, rect.height,
+                        img.cols, img.rows,
+                        width_ratio, height_ratio);
+                    resized = cv::Mat(rect.height, rect.width, CV_8UC3, cv::Scalar(10, 10, 10));;
+                }
+                cv::warpAffine(img, resized, mat, resized.size(), cv::INTER_LINEAR, cv::BORDER_TRANSPARENT);
+                last_rect = rect;
+
+                // show
+                cv::imshow(window_name, resized);
             }
         }
     }
@@ -428,9 +460,10 @@ void upp_camera_thraed(){
         if(entry){
             upp_camera.handle_upp_frame(entry->data);
             entry->used = FALSE;
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         
-        std::this_thread::sleep_for(std::chrono::milliseconds(0));
     }
 }
 
