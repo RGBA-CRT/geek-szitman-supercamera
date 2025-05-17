@@ -259,11 +259,11 @@ public:
         }
 
         const upp_cam_frame_t *p_cam_header = (upp_cam_frame_t *) (data.data() + usb_header_len);
-        if ((last_frame_id != p_cam_header->fid)){
-            printf("WARNING: %d bytes dropped. because frame skip %d %d\n", camera_buffer.size(), last_frame_id, p_cam_header->fid);
-            camera_buffer.resize(0);
-            last_frame_id = p_cam_header->fid;
-        }
+        // if ((last_frame_id != p_cam_header->fid) && (camera_buffer.size()>2)){
+        //     printf("WARNING: %d bytes dropped. because frame skip %d %d\n", camera_buffer.size(), last_frame_id, p_cam_header->fid);
+        //     camera_buffer.resize(0);
+        //     last_frame_id = p_cam_header->fid;
+        // }
 
         auto start_itr = data.begin() + usb_header_len + sizeof(upp_cam_frame_t);
         // printf("packet start %d %d %08x \n", p_cam_header->fid, p_cam_header->cam_num, p_cam_header->g_sensor);
@@ -271,26 +271,49 @@ public:
             auto next = std::next(p);
             auto p16 = (uint16_t)*p<<8 | (uint16_t)*next;
             if(p16 == 0xFFD8) {
-                // printf(" SOI ");
+                // printf(" %d SOI %d , ", p_cam_header->fid, std::distance(start_itr, p));
                 if (camera_buffer.size() > 0) {
-                    printf("WARNING: %d bytes dropped. befause SOI\n", camera_buffer.size());
+                    printf("WARNING: An unexpected SOI was found. %d bytes dropped. seq: last=%d cur=%d. [SOI]\n", 
+                        camera_buffer.size(), last_frame_id, p_cam_header->fid);
                     camera_buffer.resize(0);
                 }
                 start_itr = p;
             }if(p16 == 0xFFD9) {
-                // printf(" EOI ");
+                // printf(" %d EOI %d/%d, ", p_cam_header->fid, std::distance(start_itr, p), data.size());
+                p = next;
                 camera_buffer.insert(camera_buffer.end(), start_itr, std::next(next));
                 pic_callback(camera_buffer);
                 camera_buffer.resize(0);
-                last_frame_id = p_cam_header->fid;
+                // last_frame_id = p_cam_header->fid;
 
-                start_itr = next;
+                // Disables start_itr and prevents this frame from being buffered.
+                // start_itr only works if followed by an SOI.
+                start_itr =  data.end();
             }
-            // if(++p == data.end()) break;
         }
         // printf(" %d bytes \n", data.size());
+        last_frame_id = p_cam_header->fid;
 
-        camera_buffer.insert(camera_buffer.end(), start_itr, data.end());        
+        if(data.end() != start_itr){
+            auto dis = std::distance(start_itr, data.end());
+            camera_buffer.insert(camera_buffer.end(), start_itr, data.end()); 
+            if(dis == 1){
+                std::reverse_iterator<decltype(camera_buffer)::iterator> ri(camera_buffer.end());
+                auto p16 = ((uint16_t)*ri) | (uint16_t)*std::next(ri)<<8;
+                if(p16 == 0xFFD9){
+                    printf("INFO: last 1 byte %d %04x\n", p_cam_header->fid, p16);
+                    pic_callback(camera_buffer);
+                    camera_buffer.resize(0);
+                } else {
+                    printf("WARN: distance %d %x at seq %d, %d bytes\n", dis, *start_itr, p_cam_header->fid, camera_buffer.size());
+                }
+
+            } else {
+                if(dis < 5){
+                    printf("WARN: distance %d %x at seq %d, %d bytes\n", dis, *start_itr, p_cam_header->fid, camera_buffer.size());
+                }       
+            }
+        }
 
         if (p_cam_header->button_press) {
             btn_callback();
@@ -378,23 +401,78 @@ static void gui(void) {
 
     cv::destroyWindow(window_name);
 }
+#include <queue>
+#include <thread>
+#include <chrono>
+struct SimplePoolEntry {
+    bool used;
+    byteVector data;
+    SimplePoolEntry() : used(FALSE) {}
+};
+std::queue<SimplePoolEntry*> g_usb_frame_queue;
+std::mutex g_queue_mutex;
+
+void upp_camera_thraed(){
+    UPPCamera upp_camera(pic_callback, button_callback);
+    SimplePoolEntry* entry;
+    while (!exit_program) {
+        entry = NULL;
+        {
+            std::lock_guard<std::mutex> lock(g_queue_mutex);
+            // todo: conditional value
+            if(!g_usb_frame_queue.empty()){
+                entry = g_usb_frame_queue.front();
+                g_usb_frame_queue.pop();
+            }
+        }
+        if(entry){
+            upp_camera.handle_upp_frame(entry->data);
+            entry->used = FALSE;
+        }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(0));
+    }
+}
 
 static void upp(UsbSupercamera *usb_supercamera) {
-    UPPCamera upp_camera(pic_callback, button_callback);
-    byteVector read_buf;
+    const size_t pool_num = 128;
+    SimplePoolEntry pool[pool_num];
+    std::thread protocol_thread(upp_camera_thraed);
 
+    size_t pi = 0;
     while (!exit_program) {
-        int ret = usb_supercamera->read_frame(read_buf);
+        if(pool[pi].used){
+            // todo: add conditional value
+            std::this_thread::sleep_for(std::chrono::milliseconds(0));
+            printf("queue_full\n");
+            continue;            
+        }
+        int ret = usb_supercamera->read_frame(pool[pi].data);
         if (ret == 0) {
-            upp_camera.handle_upp_frame(read_buf);
+            //  upp_camera.handle_upp_frame(pool[pi].data);
+            pool[pi].used = TRUE;
+            {
+                std::lock_guard<std::mutex> lock(g_queue_mutex);
+                g_usb_frame_queue.push(&pool[pi]);
+            }
+            pi = (pi+1) % pool_num;
         } else if (ret == LIBUSB_ERROR_NO_DEVICE) {
             exit_program = true;
         }
     }
+    protocol_thread.join();
+}
+
+void abrt_handler(int sig) {
+  exit_program = true;
 }
 
 int main(void)
 {
+    if ( signal(SIGINT, abrt_handler) == SIG_ERR ) {
+        std::cout << KCYN << "signale error" << KRST << std::endl;
+        exit(1);
+    }
     try {
         UsbSupercamera usb_supercamera;
 

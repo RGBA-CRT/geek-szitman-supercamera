@@ -17,6 +17,7 @@ if(WIN32)
 	# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++ -static-libgcc")
 	# set(OTHER_LDFLAGS "${OTHER_LDFLAGS};-static-libstdc++;-static-libgcc;-static-pie")
 	# set(OTHER_LDFLAGS "${OTHER_LDFLAGS};-lpthread;-static-libgcc")
+	set(OTHER_LDFLAGS "${OTHER_LDFLAGS};winpthread")
 endif()
 
 # Add an executable
@@ -24,6 +25,6 @@ add_executable(${TARGET_NAME} ${src_list} ${LIB_USB})
 target_include_directories(${TARGET_NAME} PRIVATE
 	${LIBUSB_HEADER}
 	${OpenCV_INCLUDE_DIRS})
-target_link_libraries(${TARGET_NAME} ${OpenCV_LIBS} ${LIB_USB} ${OTHER_LDFLAGS})
+target_link_libraries(${TARGET_NAME} ${OpenCV_LIBS} ${LIB_USB} ${OTHER_LDFLAGS} )
 
 install(TARGETS ${TARGET_NAME} RUNTIME DESTINATION bin)
